@@ -1,6 +1,90 @@
 #!/bin/bash
-sudo apt-get update
-sudo apt-get upgrade
-sudo service nginx reload
-sudo yunohost app ssowatconf
 
+#=================================================
+# GENERIC START
+#=================================================
+# IMPORT GENERIC HELPERS
+#=================================================
+
+source _common.sh
+source /usr/share/yunohost/helpers
+
+#=================================================
+# CHECK VERSION
+#=================================================
+
+upgrade_type=$(ynh_check_app_version_changed)
+
+#=================================================
+# STANDARD UPGRADE STEPS
+#=================================================
+# STOP SYSTEMD SERVICE
+#=================================================
+ynh_script_progression --message="Stopping a systemd service..."
+
+ynh_systemd_action --service_name=$app --action="stop" --line_match="Stopped LSB" --log_path="systemd"
+
+#=================================================
+# DOWNLOAD, CHECK AND UNPACK SOURCE
+#=================================================
+ynh_script_progression --message="Setting up source files..."
+
+tempdir="$(mktemp -d)"
+# Download, check integrity, uncompress and patch the source from app.src
+ynh_setup_source --dest_dir="$tempdir"
+
+dpkg --install $tempdir/webmin.deb
+
+ynh_exec_warn_less ynh_secure_remove --file="$tempdir"
+
+#=================================================
+# NGINX CONFIGURATION
+#=================================================
+ynh_script_progression --message="Upgrading NGINX web server configuration..."
+
+# Create a dedicated NGINX config
+ynh_add_nginx_config
+
+#=================================================
+# SPECIFIC UPGRADE
+#=================================================
+# UPDATE A CONFIG FILE
+#=================================================
+ynh_script_progression --message="Updating a configuration file..."
+
+ynh_replace_string --match_string="port=10000" --replace_string="port=$port" --target_file="/etc/webmin/miniserv.conf"
+ynh_replace_string --match_string="listen=10000" --replace_string="listen=$port" --target_file="/etc/webmin/miniserv.conf"
+
+# Recalculate and store the checksum of the file for the next upgrade.
+ynh_store_file_checksum --file="/etc/webmin/miniserv.conf"
+
+#=================================================
+# SETUP SYSTEMD
+#=================================================
+ynh_script_progression --message="Upgrading systemd configuration..."
+
+# Create a dedicated systemd config
+systemctl daemon-reload
+systemctl enable $app.service --quiet
+
+#=================================================
+# GENERIC FINALIZATION
+#=================================================
+# INTEGRATE SERVICE IN YUNOHOST
+#=================================================
+ynh_script_progression --message="Integrating service in YunoHost..."
+
+yunohost service add $app --description="Webmin Daemon"
+
+#=================================================
+# START SYSTEMD SERVICE
+#=================================================
+ynh_script_progression --message="Starting a systemd service..."
+
+ynh_systemd_action --service_name=$app --action="restart" --line_match="Started Webmin server daemon" --log_path="systemd"
+
+#=================================================
+# END OF SCRIPT
+#=================================================
+
+ynh_script_progression --message="Upgrade of $app completed"
