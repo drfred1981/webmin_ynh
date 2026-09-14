@@ -1,0 +1,64 @@
+#:schema https://raw.githubusercontent.com/YunoHost/apps/master/schemas/manifest.v2.schema.json
+
+packaging_format = 2
+
+id = "webmin"
+name = "Webmin"
+description.en = "Web-based interface for system administration"
+description.fr = "Interface Web d'administration système"
+
+version = "2.660~ynh1"
+
+maintainers = []
+
+[upstream]
+license = "BSD-3-Clause"
+website = "http://www.webmin.com"
+code = "https://github.com/webmin/webmin"
+
+[integration]
+yunohost = ">= 12.1.38"
+helpers_version = "2.1"
+architectures = "all"
+multi_instance = false
+
+ldap = false
+sso = false
+
+disk = "50M"
+ram.build = "200M"
+ram.runtime = "50M"
+
+[install]
+    [install.domain]
+    type = "domain"
+
+    [install.init_main_permission]
+    type = "group"
+    default = "admins"
+
+    [install.admin]
+    type = "user"
+
+[resources]
+    [resources.sources.main]
+    url = "https://github.com/webmin/webmin/releases/download/2.660/webmin_2.660_all.deb"
+    sha256 = "80c293b26e6ac2b300365d379f51e36c2d54eb19ca3f19f8991bcc7e210af329"
+    rename = "webmin.deb"
+    autoupdate.strategy = "latest_github_release"
+    autoupdate.asset = "^webmin_.*_all.deb$"
+
+    [resources.system_user]
+
+    [resources.install_dir]
+
+    [resources.permissions]
+    main.url = "/"
+    admin.url = "/admin"
+    admin.show_tile = false
+    admin.allowed = "admins"
+
+    [resources.ports]
+
+    [resources.apt]
+    packages = "perl, libnet-ssleay-perl, openssl, libauthen-pam-perl, libpam-runtime, libio-pty-perl, apt-show-versions, shared-mime-info"
