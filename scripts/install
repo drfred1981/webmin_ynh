@@ -1,45 +1,60 @@
 #!/bin/bash
 
-# Retrieve arguments
-domain=$1
-path=$2
-user=$3
+source /usr/share/yunohost/helpers
 
-# Remove trailing "/" for next commands
-path=${path%/}
+#=================================================
+# DOWNLOAD, CHECK AND UNPACK SOURCE
+#=================================================
+ynh_script_progression "Setting up source files..."
 
-# Check user parameter
-sudo yunohost user list --json | grep -q "\"username\": \"$user\""
-if [[ ! $? -eq 0 ]]; then
-    echo "Wrong user"
-    exit 1
-fi
-sudo yunohost app setting webmin admin_user -v $user
+tempdir="$(mktemp -d)"
+# Download, check integrity, uncompress and patch the source from app.src
+ynh_setup_source --dest_dir="$tempdir"
 
-# Check domain/path availability
-sudo yunohost app checkurl $domain$path -a webmin
-if [[ ! $? -eq 0 ]]; then
-    exit 1
-fi
-sudo sh -c "echo 'deb http://download.webmin.com/download/repository sarge contrib' > /etc/apt/sources.list.d/webmin.list"
-sudo sh -c "echo 'deb http://webmin.mirror.somersettechsolutions.co.uk/repository sarge contrib' >> /etc/apt/sources.list.d/webmin.list"
+dpkg --install $tempdir/webmin.deb
 
+ynh_safe_rm "$tempdir"
 
-sudo wget http://www.webmin.com/jcameron-key.asc
-sudo apt-key add jcameron-key.asc
-sudo rm jcameron-key.asc
+#=================================================
+# APP INITIAL CONFIGURATION
+#=================================================
+ynh_script_progression "Adding $app's configuration files..."
 
-sudo apt-get update
-sudo apt-get install -y webmin
+ynh_replace --match="port=10000" --replace="port=$port" --file="/etc/webmin/miniserv.conf"
+ynh_replace --match="listen=10000" --replace="listen=$port" --file="/etc/webmin/miniserv.conf"
 
+# https://webmin.com/docs/tutorials/proxying-to-webmin-with-nginx/
+echo "referers=$domain" >> /etc/webmin/config
+echo "redirect_ssl=1" >> /etc/webmin/miniserv.conf
+echo "redirect_host=$domain" >> /etc/webmin/miniserv.conf
 
+# Calculate and store the config file checksum into the app settings
+ynh_store_file_checksum "/etc/webmin/miniserv.conf"
 
+#=================================================
+# SYSTEM CONFIGURATION
+#=================================================
+ynh_script_progression "Adding system configurations related to $app..."
 
+# Create a dedicated NGINX config
+ynh_config_add_nginx
 
-sed -i "s@PATHTOCHANGE@$path@g" ../conf/nginx.conf
-sudo cp ../conf/nginx.conf /etc/nginx/conf.d/$domain.d/webmin.conf
+# Create a dedicated systemd config
+systemctl daemon-reload
+systemctl enable $app.service --quiet
 
+yunohost service add $app --description="Webmin Daemon"
 
-# Reload Nginx and regenerate SSOwat conf
-sudo service nginx reload
-sudo yunohost app ssowatconf
+#=================================================
+# START SYSTEMD SERVICE
+#=================================================
+ynh_script_progression "Starting $app's systemd service..."
+
+# Start a systemd service
+ynh_systemctl --service=$app --action="restart" --log_path="systemd"
+
+#=================================================
+# END OF SCRIPT
+#=================================================
+
+ynh_script_progression "Installation of $app completed"
